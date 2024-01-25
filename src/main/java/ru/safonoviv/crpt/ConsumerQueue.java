@@ -1,35 +1,52 @@
 package ru.safonoviv.crpt;
 
-import lombok.Setter;
+import ru.safonoviv.CrptApi;
+import ru.safonoviv.util.ThreadUtil;
 
-import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.TimeUnit;
 
-public class ConsumerQueue implements Runnable{
-    private final BlockingQueue<SendRequest> queue;
-    @Setter
-    private boolean isFinished = false;
+public class ConsumerQueue implements Runnable {
+    private boolean running = false;
+    private final CrptApi crptApi;
+    private final RequestSchedule requestSchedule;
+    private volatile long nextSchedule;
 
-    public ConsumerQueue(BlockingQueue<SendRequest> queue) {
-        this.queue = queue;
+    public ConsumerQueue(CrptApi crptApi, TimeUnit timeUnit, int requestLimit) {
+        this.crptApi = crptApi;
+        requestSchedule = new RequestSchedule(timeUnit,requestLimit);
     }
+
 
     @Override
     public void run() {
-        while (!isFinished){
-            if (queue.isEmpty()) {
+        running = true;
+        consume();
+    }
+
+    public void stop() {
+        running = false;
+    }
+
+    public void consume() {
+        while (running) {
+            if (crptApi.isEmpty()) {
                 try {
-                    Thread.sleep(1000);
+                    crptApi.waitConsume();
                 } catch (InterruptedException e) {
-                    throw new RuntimeException(e);
-                }
-            }else{
-                while (!queue.isEmpty()){
-                    new Thread(queue.poll()).start();
+                    break;
                 }
             }
 
+            RequestScheduleTime schedule = requestSchedule.getSchedule();
+            nextSchedule = schedule.getTime();
+
+            if (nextSchedule > schedule.getTimeRequest()) {
+                ThreadUtil.sleep(nextSchedule - schedule.getTimeRequest()); //fix sleep warning in idea
+            }
+
+            Request request = crptApi.poll();
+            new Thread(request).start();
 
         }
-
     }
 }

@@ -10,7 +10,7 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 
 @AllArgsConstructor
-public class SendRequest implements Runnable{
+public class Request implements Runnable{
     private final String strJson;
     private final SSLContext sslContext;
 

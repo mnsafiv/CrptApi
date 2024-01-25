@@ -1,43 +1,61 @@
 package ru.safonoviv;
 
-
+import lombok.Getter;
 import ru.safonoviv.crpt.ConsumerQueue;
 import ru.safonoviv.crpt.ProducerQueue;
-import ru.safonoviv.crpt.RequestSchedule;
-import ru.safonoviv.crpt.SendRequest;
+import ru.safonoviv.crpt.Request;
 
 import java.util.concurrent.*;
 
 public class CrptApi {
-    private final ConsumerQueue consumerQueue;
+    @Getter
+    private final BlockingQueue<Request> queue = new LinkedBlockingQueue<>();
     private final ProducerQueue producerQueue;
+    private final ConsumerQueue consumerQueue;
     private final Thread consumerThread;
-    private final Thread producerThread;
+
+    private final Object IS_EMPTY_HOLDER = new Object();
 
     public CrptApi(TimeUnit timeUnit, int requestLimit) {
-        LinkedBlockingQueue<SendRequest> queue = new LinkedBlockingQueue<>(Integer.MAX_VALUE);
-
-        consumerQueue = new ConsumerQueue(queue);
-        producerQueue = new ProducerQueue(queue, new RequestSchedule(timeUnit, requestLimit));
-
-        consumerThread = new Thread(consumerQueue);
-        producerThread = new Thread(producerQueue);
-
+        producerQueue = new ProducerQueue(queue);
+        consumerQueue = new ConsumerQueue(this, timeUnit, requestLimit);
+        consumerThread=new Thread(consumerQueue);
         consumerThread.start();
-        producerThread.start();
-
-
     }
 
-    public void sendRequest(String jsonStr) {
-        producerQueue.addToQueueResponse(jsonStr);
 
+    public void add(Request request) {
+        producerQueue.add(request);
+        revokeConsume();
     }
 
-//    public void shootDown(){
-//        consumerQueue.setFinished(true);
-//        producerQueue.setFinished(true);
-//    }
+
+    public boolean isEmpty() {
+        return queue.isEmpty();
+    }
+
+
+    public void revokeConsume() {
+        synchronized (IS_EMPTY_HOLDER) {
+            IS_EMPTY_HOLDER.notify();
+        }
+    }
+
+    public void waitConsume() throws InterruptedException {
+        synchronized (IS_EMPTY_HOLDER) {
+            IS_EMPTY_HOLDER.wait();
+        }
+    }
+
+    public Request poll() {
+        return queue.poll();
+    }
+
+    public void stop() throws InterruptedException {
+        consumerQueue.stop();
+        revokeConsume();
+        consumerThread.join();
+    }
 
 
 }
